@@ -1,0 +1,24 @@
+# Claude Code (root level only - docs/ versions are tracked)
+.claude/
+/CLAUDE.md
+/CLAUDE.local.md
+/AGENTS.md
+
+# Temp build artifacts
+*.tmp
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.user
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Test/working files
+pr.json
+*.local.json

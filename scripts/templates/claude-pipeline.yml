@@ -1,0 +1,161 @@
+# Claude Pipeline Template
+# Full pipeline with multiple tasks running in a single container
+#
+# Usage:
+#   - template: scripts/templates/claude-pipeline.yml
+#     parameters:
+#       containerId: 'claude-$(Build.BuildId)'
+#       authToken: $(CLAUDE_CODE_OAUTH_TOKEN)
+#       model: 'sonnet'
+#       tasks:
+#       - name: 'Analyze code'
+#         prompt: 'Analyze /source for bugs'
+#         allowedTools: 'Read,Glob,Grep'
+#         # First task: starts new conversation (no continue)
+#       - name: 'Fix issues'
+#         prompt: 'Fix the issues you found'
+#         allowedTools: 'Read,Glob,Grep,Edit,Write'
+#         continue: true  # Preserves context from previous task
+#         model: 'opus'
+#
+# Note: Without 'continue: true', each task starts a fresh conversation.
+# Use continue on 2nd+ tasks to let Claude reference previous findings.
+
+parameters:
+- name: containerId
+  type: string
+
+- name: imageName
+  type: string
+  default: 'claude-agent:dev'
+
+- name: idleTimeout
+  type: number
+  default: 300
+
+- name: mountPath
+  type: string
+  default: '$(Build.SourcesDirectory)'
+
+- name: authToken
+  type: string
+  default: ''
+
+- name: useBedrock
+  type: boolean
+  default: false
+
+- name: awsRegion
+  type: string
+  default: ''
+
+- name: awsProfile
+  type: string
+  default: 'default'
+
+- name: model
+  type: string
+  default: ''
+
+- name: agent
+  type: string
+  default: ''
+
+- name: systemPrompt
+  type: string
+  default: ''
+
+- name: appendSystemPrompt
+  type: string
+  default: ''
+
+- name: maxBudgetUsd
+  type: number
+  default: 0
+
+- name: permissionMode
+  type: string
+  default: 'dontAsk'
+
+- name: envVars
+  type: object
+  default: {}
+
+- name: tasks
+  type: object
+  # Array of: { name, prompt, allowedTools, model?, agent?, continue?, systemPrompt?, appendSystemPrompt?, maxBudgetUsd?, envVars? }
+
+steps:
+- powershell: |
+    $params = @{
+      Id = '${{ parameters.containerId }}'
+      MountPath = '${{ parameters.mountPath }}'
+      ImageName = '${{ parameters.imageName }}'
+      IdleTimeout = ${{ parameters.idleTimeout }}
+    }
+
+    $authToken = '${{ parameters.authToken }}'
+    $useBedrock = '${{ parameters.useBedrock }}'
+
+    if ($useBedrock -eq 'true') {
+      $params.UseBedrock = $true
+      $params.AwsRegion = '${{ parameters.awsRegion }}'
+      $params.AwsProfile = '${{ parameters.awsProfile }}'
+    } elseif ($authToken) {
+      $params.AuthToken = $authToken
+    } else {
+      Write-Error "Either authToken or useBedrock with awsRegion must be specified"
+      exit 1
+    }
+
+    .\scripts\Start-ClaudeContainer.ps1 @params
+  displayName: 'Start Claude container'
+
+- ${{ each task in parameters.tasks }}:
+  - powershell: |
+      $params = @{
+        Id = '${{ parameters.containerId }}'
+        Prompt = '${{ task.prompt }}'
+        AllowedTools = '${{ task.allowedTools }}'
+      }
+      # Task-level overrides pipeline-level
+      $model = '${{ task.model }}'
+      if (-not $model) { $model = '${{ parameters.model }}' }
+      if ($model) { $params.Model = $model }
+
+      $agent = '${{ task.agent }}'
+      if (-not $agent) { $agent = '${{ parameters.agent }}' }
+      if ($agent) { $params.Agent = $agent }
+
+      $sysPrompt = '${{ task.systemPrompt }}'
+      if (-not $sysPrompt) { $sysPrompt = '${{ parameters.systemPrompt }}' }
+      if ($sysPrompt) { $params.SystemPrompt = $sysPrompt }
+
+      $appendPrompt = '${{ task.appendSystemPrompt }}'
+      if (-not $appendPrompt) { $appendPrompt = '${{ parameters.appendSystemPrompt }}' }
+      if ($appendPrompt) { $params.AppendSystemPrompt = $appendPrompt }
+
+      $budget = ${{ coalesce(task.maxBudgetUsd, parameters.maxBudgetUsd, 0) }}
+      if ($budget -gt 0) { $params.MaxBudgetUsd = $budget }
+
+      if ('${{ task.continue }}' -eq 'true') { $params.Continue = $true }
+
+      # Build env vars: pipeline-level merged with task-level
+      $envVars = @{}
+      ${{ each pair in parameters.envVars }}:
+        $envVars['${{ pair.key }}'] = '${{ pair.value }}'
+      ${{ each pair in task.envVars }}:
+        $envVars['${{ pair.key }}'] = '${{ pair.value }}'
+      if ($envVars.Count -gt 0) { $params.EnvVars = $envVars }
+
+      $permMode = '${{ task.permissionMode }}'
+      if (-not $permMode) { $permMode = '${{ parameters.permissionMode }}' }
+      $params.PermissionMode = $permMode
+
+      .\scripts\Invoke-ClaudePrompt.ps1 @params
+    displayName: '${{ task.name }}'
+
+- powershell: |
+    .\scripts\Stop-ClaudeContainer.ps1 -Id '${{ parameters.containerId }}' -Force
+  displayName: 'Stop Claude container'
+  condition: always()

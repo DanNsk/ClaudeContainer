@@ -1,0 +1,119 @@
+# Example: Claude PR Bot Triggered by @bot Mention
+# Runs Claude only when someone mentions @bot in PR comments
+#
+# Pattern: Check for @bot mention -> Run Claude if found -> Skip otherwise
+
+trigger: none
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  name: 'SelfHostedWindows'
+
+variables:
+  containerId: 'claude-$(Build.BuildId)'
+  botMention: '@bot'
+
+stages:
+- stage: BotResponse
+  jobs:
+  # Job 1: Check if PR has @bot mention in comments
+  - job: CheckMention
+    steps:
+    - checkout: none
+
+    - task: PowerShell@2
+      name: MentionCheck
+      displayName: 'Check for @bot mention in PR comments'
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        script: |
+          $prId = "$(System.PullRequest.PullRequestId)"
+          $hasMention = "false"
+
+          if (-not [string]::IsNullOrEmpty($prId)) {
+            # Use Get-AzDoPullRequest with FindKeyword to check for @bot mention
+            # Exit code 2 = keyword not found, 0 = found, 1 = error
+            $prUrl = "$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_git/$(Build.Repository.Name)/pullrequest/$prId"
+
+            & pwsh -File C:\scripts\azdo\Get-AzDoPullRequest.ps1 `
+              -PullRequestUrl $prUrl `
+              -FindKeyword "$(botMention)" `
+              -AccessToken $env:SYSTEM_ACCESSTOKEN `
+              -OutputFile "$(Agent.TempDirectory)\pr.json"
+
+            $exitCode = $LASTEXITCODE
+
+            if ($exitCode -eq 0) {
+              $hasMention = "true"
+              Write-Host "Found '$(botMention)' mention in PR #$prId"
+            } elseif ($exitCode -eq 2) {
+              Write-Host "No '$(botMention)' mention found in PR #$prId"
+            } else {
+              Write-Error "Failed to get PR info (exit code: $exitCode)"
+              exit 1
+            }
+          } else {
+            Write-Host "Not a PR build, skipping mention check"
+          }
+
+          Write-Host "##vso[task.setvariable variable=hasMention;isOutput=true]$hasMention"
+          Write-Host "##vso[task.setvariable variable=prId;isOutput=true]$prId"
+
+  # Job 2: Run Claude response (only if @bot mention found)
+  - job: ClaudeResponse
+    dependsOn: CheckMention
+    condition: eq(dependencies.CheckMention.outputs['MentionCheck.hasMention'], 'true')
+    variables:
+      prId: $[ dependencies.CheckMention.outputs['MentionCheck.prId'] ]
+    steps:
+    - checkout: self
+
+    - template: ../claude-pipeline.yml
+      parameters:
+        containerId: $(containerId)
+        authToken: $(CLAUDE_CODE_OAUTH_TOKEN)
+        envVars:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          AZDO_ORG: $(System.TeamFoundationCollectionUri)
+          AZDO_PROJECT: $(System.TeamProject)
+          AZDO_REPO: $(Build.Repository.Name)
+          PR_ID: $(prId)
+        tasks:
+        - name: 'Process bot request'
+          prompt: |
+            First, get the PR information:
+            pwsh -File C:\scripts\azdo\Get-AzDoPullRequest.ps1 -PullRequestUrl "$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_git/$(Build.Repository.Name)/pullrequest/$(prId)" -OutputFile pr.json
+
+            Read pr.json and find comments containing "@bot". For each @bot mention:
+            1. Understand what the user is asking for
+            2. Perform the requested task (code review, explanation, fix suggestion, etc.)
+            3. Reply to the thread with your response:
+               pwsh -File C:\scripts\azdo\Add-AzDoPullRequestReply.ps1 -PullRequestUrl "..." -ThreadId <thread_id> -Content "Your response"
+
+            Be helpful and concise in your responses.
+          allowedTools: 'Read,Glob,Grep,Bash(git:*),Bash(pwsh:*)'
+
+  # Job 3: Continue with other pipeline stages (runs regardless of mention)
+  - job: ContinuePipeline
+    dependsOn:
+    - CheckMention
+    - ClaudeResponse
+    condition: always()
+    steps:
+    - checkout: self
+
+    - script: echo "Continuing with regular pipeline stages..."
+      displayName: 'Continue pipeline'
+
+    # Add your regular build/test/deploy steps here
+    # - task: DotNetCoreCLI@2
+    #   inputs:
+    #     command: 'build'

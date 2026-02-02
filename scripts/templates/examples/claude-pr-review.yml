@@ -1,0 +1,94 @@
+# Example: Claude PR Review with Azure DevOps Scripts
+# Uses built-in azdo scripts to get PR info and add comments
+#
+# Pattern: Label check job -> Claude review with PR interaction
+
+trigger: none
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  name: 'SelfHostedWindows'
+
+variables:
+  containerId: 'claude-$(Build.BuildId)'
+  reviewLabel: 'review'
+
+stages:
+- stage: PRReview
+  jobs:
+  # Job 1: Check if PR has the review label
+  - job: CheckLabel
+    steps:
+    - checkout: none
+
+    - task: PowerShell@2
+      name: LabelCheck
+      displayName: 'Check for review label'
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      inputs:
+        targetType: 'inline'
+        script: |
+          $prId = "$(System.PullRequest.PullRequestId)"
+          $hasLabel = "false"
+
+          if (-not [string]::IsNullOrEmpty($prId)) {
+            $url = "$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_apis/git/repositories/$(Build.Repository.Id)/pullRequests/$prId/labels?api-version=7.1"
+            $res = Invoke-RestMethod -Uri $url -Headers @{Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN"}
+            if ($res.value | Where-Object { $_.name -eq "$(reviewLabel)" }) {
+              $hasLabel = "true"
+              Write-Host "Found '$(reviewLabel)' label on PR #$prId"
+            }
+          } else {
+            Write-Host "Not a PR build, skipping label check"
+          }
+
+          Write-Host "##vso[task.setvariable variable=hasLabel;isOutput=true]$hasLabel"
+          Write-Host "##vso[task.setvariable variable=prId;isOutput=true]$prId"
+
+  # Job 2: Run Claude review (only if label found)
+  - job: ClaudeReview
+    dependsOn: CheckLabel
+    condition: eq(dependencies.CheckLabel.outputs['LabelCheck.hasLabel'], 'true')
+    variables:
+      prId: $[ dependencies.CheckLabel.outputs['LabelCheck.prId'] ]
+    steps:
+    - checkout: self
+
+    - template: ../claude-pipeline.yml
+      parameters:
+        containerId: $(containerId)
+        authToken: $(CLAUDE_CODE_OAUTH_TOKEN)
+        envVars:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          AZDO_ORG: $(System.TeamFoundationCollectionUri)
+          AZDO_PROJECT: $(System.TeamProject)
+          AZDO_REPO: $(Build.Repository.Name)
+          PR_ID: $(prId)
+        tasks:
+        - name: 'Review PR changes'
+          prompt: |
+            First, get the PR information using PowerShell:
+            powershell -File C:\scripts\azdo\Get-AzDoPullRequest.ps1 -Organization $env:AZDO_ORG -Project $env:AZDO_PROJECT -RepositoryId $env:AZDO_REPO -PullRequestId $env:PR_ID
+
+            Review the code changes. For each issue found:
+            1. If it's a file-specific issue, add an inline comment:
+               powershell -File C:\scripts\azdo\Add-AzDoPullRequestThread.ps1 -Organization $env:AZDO_ORG -Project $env:AZDO_PROJECT -RepositoryId $env:AZDO_REPO -PullRequestId $env:PR_ID -Content "Your comment" -FilePath "/path/to/file.cs" -LineStart 42
+
+            2. For general observations, add a thread without file context:
+               powershell -File C:\scripts\azdo\Add-AzDoPullRequestThread.ps1 -Organization $env:AZDO_ORG -Project $env:AZDO_PROJECT -RepositoryId $env:AZDO_REPO -PullRequestId $env:PR_ID -Content "General comment"
+
+            Focus on: bugs, security issues, performance problems, and code quality.
+          allowedTools: 'Read,Glob,Grep,Bash(git:*),Bash(powershell:*)'
+
+        - name: 'Summarize review'
+          prompt: |
+            Summarize the review findings in a final comment:
+            powershell -File C:\scripts\azdo\Add-AzDoPullRequestThread.ps1 -Organization $env:AZDO_ORG -Project $env:AZDO_PROJECT -RepositoryId $env:AZDO_REPO -PullRequestId $env:PR_ID -Content "## Review Summary`n`n[Your summary here]"
+          allowedTools: 'Bash(powershell:*)'
+          continue: true

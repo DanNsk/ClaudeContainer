@@ -1,0 +1,84 @@
+# Claude Task Template
+# Single task template for reuse in pipelines
+#
+# Usage:
+#   - template: scripts/templates/claude-task.yml
+#     parameters:
+#       containerId: '$(containerId)'
+#       prompt: 'Review code for performance issues'
+#       name: 'Performance review'
+#       allowedTools: 'Read,Glob,Grep'
+#       model: 'sonnet'
+#       continue: true  # Set to true on 2nd+ tasks to preserve conversation context
+
+parameters:
+- name: containerId
+  type: string
+
+- name: prompt
+  type: string
+
+- name: name
+  type: string
+
+- name: allowedTools
+  type: string
+  default: 'Read,Glob,Grep'
+
+- name: permissionMode
+  type: string
+  default: 'dontAsk'
+
+- name: condition
+  type: string
+  default: 'succeeded()'
+
+- name: model
+  type: string
+  default: ''
+
+- name: agent
+  type: string
+  default: ''
+
+- name: systemPrompt
+  type: string
+  default: ''
+
+- name: appendSystemPrompt
+  type: string
+  default: ''
+
+- name: maxBudgetUsd
+  type: number
+  default: 0
+
+- name: continue
+  type: boolean
+  default: false
+
+- name: envVars
+  type: object
+  default: {}
+
+steps:
+- powershell: |
+    $params = @{
+      Id = '${{ parameters.containerId }}'
+      Prompt = '${{ parameters.prompt }}'
+      AllowedTools = '${{ parameters.allowedTools }}'
+      PermissionMode = '${{ parameters.permissionMode }}'
+    }
+    if ('${{ parameters.model }}') { $params.Model = '${{ parameters.model }}' }
+    if ('${{ parameters.agent }}') { $params.Agent = '${{ parameters.agent }}' }
+    if ('${{ parameters.systemPrompt }}') { $params.SystemPrompt = '${{ parameters.systemPrompt }}' }
+    if ('${{ parameters.appendSystemPrompt }}') { $params.AppendSystemPrompt = '${{ parameters.appendSystemPrompt }}' }
+    if (${{ parameters.maxBudgetUsd }} -gt 0) { $params.MaxBudgetUsd = ${{ parameters.maxBudgetUsd }} }
+    if ('${{ parameters.continue }}' -eq 'true') { $params.Continue = $true }
+    $envVars = @{}
+    ${{ each pair in parameters.envVars }}:
+      $envVars['${{ pair.key }}'] = '${{ pair.value }}'
+    if ($envVars.Count -gt 0) { $params.EnvVars = $envVars }
+    .\scripts\Invoke-ClaudePrompt.ps1 @params
+  displayName: '${{ parameters.name }}'
+  condition: ${{ parameters.condition }}

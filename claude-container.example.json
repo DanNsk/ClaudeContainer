@@ -1,0 +1,54 @@
+{
+  "image": {
+    "name": "claude-agent",
+    "tag": "dev",
+    "baseImage": "auto"
+  },
+  "sdk": {
+    "dotNetVersion": "10.0",
+    "nodeVersion": "22",
+    "pythonVersion": "3.12",
+    "includeBuildTools": true,
+    "useBun": false,
+    "useUv": false
+  },
+  "instructions": {
+    "mdFiles": ["./docs/*.md"],
+    "noDefaultMd": false
+  },
+  "extensions": {
+    "mcpServers": [
+      { "name": "filesystem", "transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:\\source"] },
+      { "name": "remote-api", "transport": "http", "url": "https://api.example.com/mcp" }
+    ],
+    "marketplaces": [
+      { "name": "company-plugins", "url": "https://dev.azure.com/Org/Project/_git/plugins" }
+    ],
+    "plugins": ["formatter@company-plugins", "deployer@company-plugins"]
+  },
+  "container": {
+    "idleTimeout": 300
+  },
+  "auth": {
+    "useBedrock": false,
+    "awsRegion": "",
+    "awsProfile": "default"
+  },
+  "tools": {
+    "allowed": ["Read", "Glob", "Grep"],
+    "denied": []
+  },
+  "output": {
+    "format": "text",
+    "timeout": 600
+  },
+  "model": {
+    "name": "",
+    "agent": "",
+    "maxBudgetUsd": 0
+  },
+  "system": {
+    "prompt": "",
+    "appendPrompt": ""
+  }
+}
