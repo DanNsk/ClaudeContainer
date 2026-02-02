@@ -85,6 +85,9 @@
     Hashtable of environment variables to pass to the container.
     Merged with config.container.envVars (CLI overrides config).
 
+.PARAMETER Silent
+    Suppress container start/stop messages. Claude output is still shown.
+
 .EXAMPLE
     .\Invoke-ClaudePrompt.ps1 -Id "build-123" -Prompt "List all .cs files"
     Auto-starts container using $env:CLAUDE_CODE_OAUTH_TOKEN, mounts current directory.
@@ -142,7 +145,9 @@ param(
 
     [switch]$Continue,
 
-    [hashtable]$EnvVars
+    [hashtable]$EnvVars,
+
+    [switch]$Silent
 )
 
 $ErrorActionPreference = "Stop"
@@ -181,6 +186,7 @@ if ($UseBedrock) { $startArgs.UseBedrock = $true }
 if ($AwsRegion) { $startArgs.AwsRegion = $AwsRegion }
 if ($AwsProfile) { $startArgs.AwsProfile = $AwsProfile }
 if ($WatchdogNonStrict) { $startArgs.WatchdogNonStrict = $true }
+if ($Silent) { $startArgs.Silent = $true }
 
 & "$scriptDir\Start-ClaudeContainer.ps1" @startArgs
 if ($LASTEXITCODE -ne 0) {
