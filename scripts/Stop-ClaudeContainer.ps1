@@ -11,6 +11,9 @@
 .PARAMETER Force
     Skip confirmation prompt.
 
+.PARAMETER Silent
+    Suppress all informational output.
+
 .EXAMPLE
     .\Stop-ClaudeContainer.ps1 -Id "build-123" -Force
     Immediately stops and removes the container.
@@ -19,7 +22,9 @@ param(
     [Parameter(Mandatory)]
     [string]$Id,
 
-    [switch]$Force
+    [switch]$Force,
+
+    [switch]$Silent
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,7 +32,7 @@ $ErrorActionPreference = "Stop"
 # Check container exists
 $existing = docker ps -aq --filter "name=^${Id}$" 2>$null
 if (-not $existing) {
-    Write-Warning "Container '$Id' does not exist"
+    if (-not $Silent) { Write-Warning "Container '$Id' does not exist" }
     exit 0
 }
 
@@ -35,12 +40,12 @@ if (-not $existing) {
 if (-not $Force) {
     $confirm = Read-Host "Stop and remove container '$Id'? (y/N)"
     if ($confirm -ne 'y' -and $confirm -ne 'Y') {
-        Write-Host "Cancelled"
+        if (-not $Silent) { Write-Host "Cancelled" }
         exit 0
     }
 }
 
-Write-Host "Stopping container: $Id" -ForegroundColor Cyan
+if (-not $Silent) { Write-Host "Stopping container: $Id" -ForegroundColor Cyan }
 
 # Stop container
 docker stop $Id 2>$null | Out-Null
@@ -48,4 +53,4 @@ docker stop $Id 2>$null | Out-Null
 # Remove container
 docker rm $Id 2>$null | Out-Null
 
-Write-Host "Container $Id stopped and removed" -ForegroundColor Green
+if (-not $Silent) { Write-Host "Container $Id stopped and removed" -ForegroundColor Green }

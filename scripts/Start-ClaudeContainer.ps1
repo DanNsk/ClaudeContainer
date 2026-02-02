@@ -37,6 +37,9 @@
 .PARAMETER AwsProfile
     AWS profile name for Bedrock. Default: default
 
+.PARAMETER Silent
+    Suppress all informational output. No messages, no container ID output.
+
 .EXAMPLE
     .\Start-ClaudeContainer.ps1 -Id "build-123" -MountPath "C:\repos\myproject" -AuthToken $env:CLAUDE_CODE_OAUTH_TOKEN
     Starts container with OAuth token authentication.
@@ -76,7 +79,9 @@ param(
 
     [string]$AwsProfile,
 
-    [switch]$WatchdogNonStrict
+    [switch]$WatchdogNonStrict,
+
+    [switch]$Silent
 )
 
 $ErrorActionPreference = "Stop"
@@ -142,16 +147,16 @@ $existing = docker ps -aq --filter "name=^${Id}$" 2>$null
 if ($existing) {
     $running = docker inspect -f '{{.State.Running}}' $Id 2>$null
     if ($running -eq 'true') {
-        Write-Host "Container $Id is already running" -ForegroundColor Yellow
-        Write-Output $Id
+        if (-not $Silent) { Write-Host "Container $Id is already running" -ForegroundColor Yellow }
+        if (-not $Silent) { Write-Output $Id }
         exit 0
     }
     # Container exists but stopped - remove it
-    Write-Host "Removing stopped container $Id" -ForegroundColor Yellow
+    if (-not $Silent) { Write-Host "Removing stopped container $Id" -ForegroundColor Yellow }
     docker rm $Id | Out-Null
 }
 
-Write-Host "Starting Claude container: $Id"
+if (-not $Silent) { Write-Host "Starting Claude container: $Id" }
 
 # Build docker run arguments
 $dockerArgs = @(
@@ -179,7 +184,11 @@ if ($UseBedrock) {
 $dockerArgs += $ImageName
 
 # Start container
-& docker @dockerArgs
+if ($Silent) {
+    & docker @dockerArgs | Out-Null
+} else {
+    & docker @dockerArgs
+}
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to start container"
@@ -205,5 +214,7 @@ if ($waited -ge $maxWait) {
     exit 1
 }
 
-Write-Host "Container $Id is running" -ForegroundColor Green
-Write-Output $Id
+if (-not $Silent) {
+    Write-Host "Container $Id is running" -ForegroundColor Green
+    Write-Output $Id
+}
