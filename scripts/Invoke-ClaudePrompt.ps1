@@ -58,6 +58,9 @@
     Hashtable of environment variables to pass to the container.
     Merged with config.container.envVars (CLI overrides config).
 
+.PARAMETER Silent
+    Suppress command debug output.
+
 .EXAMPLE
     .\Invoke-ClaudePrompt.ps1 -Id "build-123" -Prompt "List all .cs files"
     Executes prompt in running container with default read-only tools.
@@ -103,7 +106,9 @@ param(
 
     [switch]$Continue,
 
-    [hashtable]$EnvVars
+    [hashtable]$EnvVars,
+
+    [switch]$Silent
 )
 
 $ErrorActionPreference = "Stop"
@@ -114,16 +119,16 @@ if ($Config -and (Test-Path $Config)) {
     $configData = Get-Content $Config -Raw | ConvertFrom-Json
 }
 
-# Apply defaults with config fallback
+# Apply defaults with config fallback (cast JSON arrays to string[])
 if (-not $AllowedTools -or $AllowedTools.Count -eq 0) {
     if ($configData -and $configData.tools.allowed -and $configData.tools.allowed.Count -gt 0) {
-        $AllowedTools = $configData.tools.allowed
+        $AllowedTools = [string[]]@($configData.tools.allowed)
     } else {
         $AllowedTools = @("Read", "Glob", "Grep")
     }
 }
 if (-not $DenyTools -and $configData -and $configData.tools.denied -and $configData.tools.denied.Count -gt 0) {
-    $DenyTools = $configData.tools.denied
+    $DenyTools = [string[]]@($configData.tools.denied)
 }
 if (-not $PermissionMode) {
     $PermissionMode = if ($configData -and $configData.tools.permissionMode) { $configData.tools.permissionMode } else { "dontAsk" }
@@ -235,6 +240,38 @@ if ($Continue) {
     $cmdArgs += "--continue"
 }
 
+# Output debug info when not silent
+if (-not $Silent) {
+    # Build display command, masking sensitive env var values
+    $sensitiveKeys = @("TOKEN", "KEY", "SECRET", "PASSWORD", "CREDENTIAL")
+    $displayArgs = @()
+    $nextIsEnvVar = $false
+    foreach ($arg in $cmdArgs) {
+        if ($nextIsEnvVar) {
+            # This is KEY=VALUE, check if key contains sensitive word
+            $isSensitive = $false
+            foreach ($key in $sensitiveKeys) {
+                if ($arg -match "^[A-Z_]*${key}[A-Z_]*=") {
+                    $isSensitive = $true
+                    break
+                }
+            }
+            if ($isSensitive) {
+                $envKey = ($arg -split '=')[0]
+                $displayArgs += "$envKey=***"
+            } else {
+                $displayArgs += $arg
+            }
+            $nextIsEnvVar = $false
+        } elseif ($arg -eq "-e") {
+            $displayArgs += $arg
+            $nextIsEnvVar = $true
+        } else {
+            $displayArgs += $arg
+        }
+    }
+    Write-Host "docker $($displayArgs -join ' ')" -ForegroundColor Cyan
+}
 
 # Execute with timeout
 $job = Start-Job -ScriptBlock {
