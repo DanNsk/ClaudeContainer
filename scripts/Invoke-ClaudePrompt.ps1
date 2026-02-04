@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Executes a Claude prompt in a container, starting it if needed.
+    Executes a Claude prompt in a running container.
 
 .DESCRIPTION
     Sends a prompt to Claude Code running in the specified container.
-    Automatically starts the container if not already running.
+    Container must already be running (use Start-ClaudeContainer.ps1 first).
     Supports configuring allowed/denied tools, output format, model selection,
     agent selection, system prompts, and budget limits.
 
@@ -16,33 +16,6 @@
 
 .PARAMETER Prompt
     Task prompt for Claude.
-
-.PARAMETER MountPath
-    Host folder to mount at C:\source. Default: current directory.
-
-.PARAMETER ImageName
-    Docker image name with tag. Default: claude-agent:dev
-
-.PARAMETER IdleTimeout
-    Seconds of inactivity before auto-shutdown. Default: 300
-
-.PARAMETER AuthToken
-    OAuth token for Claude authentication. Default: $env:CLAUDE_CODE_OAUTH_TOKEN
-
-.PARAMETER ApiKey
-    Anthropic API key for authentication. Default: $env:ANTHROPIC_API_KEY
-
-.PARAMETER UseBedrock
-    Use AWS Bedrock instead of OAuth authentication.
-
-.PARAMETER AwsRegion
-    AWS region for Bedrock.
-
-.PARAMETER AwsProfile
-    AWS profile name for Bedrock. Default: default
-
-.PARAMETER WatchdogNonStrict
-    Detect any Claude process, not just prompt mode.
 
 .PARAMETER AllowedTools
     Array of allowed tools. Default: Read, Glob, Grep
@@ -85,12 +58,9 @@
     Hashtable of environment variables to pass to the container.
     Merged with config.container.envVars (CLI overrides config).
 
-.PARAMETER Silent
-    Suppress container start/stop messages. Claude output is still shown.
-
 .EXAMPLE
     .\Invoke-ClaudePrompt.ps1 -Id "build-123" -Prompt "List all .cs files"
-    Auto-starts container using $env:CLAUDE_CODE_OAUTH_TOKEN, mounts current directory.
+    Executes prompt in running container with default read-only tools.
 
 .EXAMPLE
     .\Invoke-ClaudePrompt.ps1 -Config "claude-container.json" -Id "build-123" -Prompt "Review code"
@@ -109,18 +79,6 @@ param(
     [Parameter(Mandatory)]
     [string]$Prompt,
 
-    # Container start params
-    [string]$MountPath,
-    [string]$ImageName,
-    [int]$IdleTimeout,
-    [string]$AuthToken,
-    [string]$ApiKey,
-    [switch]$UseBedrock,
-    [string]$AwsRegion,
-    [string]$AwsProfile,
-    [switch]$WatchdogNonStrict,
-
-    # Prompt execution params
     [string[]]$AllowedTools,
 
     [string[]]$DenyTools,
@@ -145,9 +103,7 @@ param(
 
     [switch]$Continue,
 
-    [hashtable]$EnvVars,
-
-    [switch]$Silent
+    [hashtable]$EnvVars
 )
 
 $ErrorActionPreference = "Stop"
@@ -156,41 +112,6 @@ $ErrorActionPreference = "Stop"
 $configData = $null
 if ($Config -and (Test-Path $Config)) {
     $configData = Get-Content $Config -Raw | ConvertFrom-Json
-}
-
-# --- Container start defaults ---
-if (-not $MountPath) {
-    $MountPath = Get-Location
-}
-if (-not $AuthToken -and -not $ApiKey -and -not $UseBedrock) {
-    # Try environment variables
-    if ($env:CLAUDE_CODE_OAUTH_TOKEN) {
-        $AuthToken = $env:CLAUDE_CODE_OAUTH_TOKEN
-    } elseif ($env:ANTHROPIC_API_KEY) {
-        $ApiKey = $env:ANTHROPIC_API_KEY
-    }
-}
-
-# Ensure container is running (Start script is idempotent)
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$startArgs = @{
-    Id = $Id
-    MountPath = $MountPath
-}
-if ($Config) { $startArgs.Config = $Config }
-if ($ImageName) { $startArgs.ImageName = $ImageName }
-if ($IdleTimeout) { $startArgs.IdleTimeout = $IdleTimeout }
-if ($AuthToken) { $startArgs.AuthToken = $AuthToken }
-if ($ApiKey) { $startArgs.ApiKey = $ApiKey }
-if ($UseBedrock) { $startArgs.UseBedrock = $true }
-if ($AwsRegion) { $startArgs.AwsRegion = $AwsRegion }
-if ($AwsProfile) { $startArgs.AwsProfile = $AwsProfile }
-if ($WatchdogNonStrict) { $startArgs.WatchdogNonStrict = $true }
-if ($Silent) { $startArgs.Silent = $true }
-
-& "$scriptDir\Start-ClaudeContainer.ps1" @startArgs
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
 }
 
 # Apply defaults with config fallback
@@ -251,7 +172,7 @@ $permissionArgs = switch ($PermissionMode) {
 }
 
 # Build docker exec with env vars
-$cmdArgs = @("exec")
+$cmdArgs = @("exec", "--workdir", "C:\source")
 
 foreach ($key in $mergedEnvVars.Keys) {
     $value = $mergedEnvVars[$key]
