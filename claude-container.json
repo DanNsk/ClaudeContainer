@@ -9,7 +9,7 @@
     }
   },
   "tools": {
-    "allowed": ["Read", "Glob", "Grep", "Bash(git:*)", "Bash(dotnet:*)", "Bash(powershell -File C:\\scripts\\azdo\\*)", "Bash(pwsh -File C:\\scripts\\azdo\\*)", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "Task" ],
+    "allowed": ["Read", "Glob", "Grep", "Bash(git:*)", "Bash(dotnet:*)", "Bash(powershell:*)", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "Task" ],
     "denied": [],
     "permissionMode": "dontAsk"
   }

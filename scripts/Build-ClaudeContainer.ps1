@@ -570,6 +570,8 @@ ENTRYPOINT ["powershell", "-File", "C:\\entrypoint-watchdog.ps1"]
     # Build image
     Push-Location $tempPath
     try {
+        #$env:DOCKER_BUILDKIT=0
+
         docker build -t $FullImageName .
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Docker build failed with exit code $LASTEXITCODE"
