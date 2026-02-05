@@ -187,13 +187,16 @@ foreach ($key in $mergedEnvVars.Keys) {
     }
 }
 
+# Escape quotes and wrap tools arg to protect special chars like parentheses
+$toolsArgEscaped = "`"$($toolsArg -replace '"', '\"')`""
+
 $cmdArgs += @(
     $Id
     "claude"
     "-p"
     $Prompt
     "--allowed-tools"
-    $toolsArg
+    $toolsArgEscaped
     "--output-format"
     $OutputFormat
 ) + $permissionArgs
@@ -201,8 +204,9 @@ $cmdArgs += @(
 # Add denied tools if specified
 if ($DenyTools -and $DenyTools.Count -gt 0) {
     $denyArg = $DenyTools -join ','
+    $denyArgEscaped = "`"$($denyArg -replace '"', '\"')`""
     $cmdArgs += "--disallowed-tools"
-    $cmdArgs += $denyArg
+    $cmdArgs += $denyArgEscaped
 }
 
 # Add model if specified
@@ -247,6 +251,7 @@ if (-not $Silent) {
         Write-Host "Denied: $denyArg" -ForegroundColor Cyan
     }
     Write-Host "Permission mode: $PermissionMode" -ForegroundColor Cyan
+    Write-Host "Full command: docker $($cmdArgs -join ' ')" -ForegroundColor DarkGray
 }
 
 # Execute with timeout
