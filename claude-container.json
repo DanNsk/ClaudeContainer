@@ -9,7 +9,7 @@
     }
   },
   "tools": {
-    "allowed": ["Read", "Write", "Glob", "Grep", "Bash(git:*)", "Bash(dotnet:*)", "Bash(powershell:*)", "Bash(pwsh:*)", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "Task" ],
+    "allowed": ["Read", "Write", "Glob", "Grep", "Bash(git:*)", "Bash(git pull:*)", "Bash(git add:*)", "Bash(git push:*)", "Bash(git commit:*)", "Bash(dotnet:*)", "Bash(powershell:*)", "Bash(pwsh:*)", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "Task" ],
     "denied": [],
     "permissionMode": "dontAsk"
   }
