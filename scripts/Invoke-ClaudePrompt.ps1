@@ -242,35 +242,11 @@ if ($Continue) {
 
 # Output debug info when not silent
 if (-not $Silent) {
-    # Build display command, masking sensitive env var values
-    $sensitiveKeys = @("TOKEN", "KEY", "SECRET", "PASSWORD", "CREDENTIAL")
-    $displayArgs = @()
-    $nextIsEnvVar = $false
-    foreach ($arg in $cmdArgs) {
-        if ($nextIsEnvVar) {
-            # This is KEY=VALUE, check if key contains sensitive word
-            $isSensitive = $false
-            foreach ($key in $sensitiveKeys) {
-                if ($arg -match "^[A-Z_]*${key}[A-Z_]*=") {
-                    $isSensitive = $true
-                    break
-                }
-            }
-            if ($isSensitive) {
-                $envKey = ($arg -split '=')[0]
-                $displayArgs += "$envKey=***"
-            } else {
-                $displayArgs += $arg
-            }
-            $nextIsEnvVar = $false
-        } elseif ($arg -eq "-e") {
-            $displayArgs += $arg
-            $nextIsEnvVar = $true
-        } else {
-            $displayArgs += $arg
-        }
+    Write-Host "Allowed: $toolsArg" -ForegroundColor Cyan
+    if ($DenyTools -and $DenyTools.Count -gt 0) {
+        Write-Host "Denied: $denyArg" -ForegroundColor Cyan
     }
-    Write-Host "docker $($displayArgs -join ' ')" -ForegroundColor Cyan
+    Write-Host "Permission mode: $PermissionMode" -ForegroundColor Cyan
 }
 
 # Execute with timeout
