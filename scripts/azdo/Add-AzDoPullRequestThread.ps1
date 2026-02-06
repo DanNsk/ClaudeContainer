@@ -128,6 +128,9 @@ $body = @{
 
 # Add file context if specified
 if ($FilePath) {
+    if (-not $FilePath.StartsWith("/")) {
+        $FilePath = "/$FilePath"
+    }
     $threadContext = @{
         filePath = $FilePath
     }
