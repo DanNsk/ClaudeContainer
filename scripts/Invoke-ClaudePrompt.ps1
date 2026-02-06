@@ -168,11 +168,6 @@ if ($EnvVars) {
     }
 }
 
-# Escape inner quotes and wrap value in quotes for safe docker arg passing
-function Escape-Arg([string]$val) {
-    "`"$($val -replace '\\', '\\' -replace '"', '\"')`""
-}
-
 # Build command arguments
 $toolsArg = $AllowedTools -join ','
 # Map permission mode to CLI args
@@ -196,9 +191,9 @@ $cmdArgs += @(
     $Id
     "claude"
     "-p"
-    (Escape-Arg $Prompt)
+    $Prompt
     "--allowed-tools"
-    (Escape-Arg $toolsArg)
+    $toolsArg
     "--output-format"
     $OutputFormat
 ) + $permissionArgs
@@ -207,7 +202,7 @@ $cmdArgs += @(
 if ($DenyTools -and $DenyTools.Count -gt 0) {
     $denyArg = $DenyTools -join ','
     $cmdArgs += "--disallowed-tools"
-    $cmdArgs += (Escape-Arg $denyArg)
+    $cmdArgs += $denyArg
 }
 
 # Add model if specified
@@ -225,13 +220,13 @@ if ($Agent) {
 # Add system prompt if specified
 if ($SystemPrompt) {
     $cmdArgs += "--system-prompt"
-    $cmdArgs += (Escape-Arg $SystemPrompt)
+    $cmdArgs += $SystemPrompt
 }
 
 # Add append system prompt if specified
 if ($AppendSystemPrompt) {
     $cmdArgs += "--append-system-prompt"
-    $cmdArgs += (Escape-Arg $AppendSystemPrompt)
+    $cmdArgs += $AppendSystemPrompt
 }
 
 # Add budget limit if specified
@@ -255,12 +250,12 @@ if (-not $Silent) {
     Write-Host "Full command: docker $($cmdArgs -join ' ')" -ForegroundColor DarkGray
 }
 
-# Execute with timeout
+# Execute with timeout ($using: avoids ArgumentList serialization that mangles multiline strings)
 $job = Start-Job -ScriptBlock {
-    param($dockerArgs)
+    $dockerArgs = $using:cmdArgs
     & docker @dockerArgs
     $LASTEXITCODE
-} -ArgumentList (,$cmdArgs)
+}
 
 $completed = $job | Wait-Job -Timeout $Timeout
 
