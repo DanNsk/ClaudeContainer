@@ -246,9 +246,9 @@ if ($Continue) {
 
 # Output debug info when not silent
 if (-not $Silent) {
-    Write-Host "Allowed: $toolsArg" -ForegroundColor Cyan
+    Write-Host "Allowed: $toolsArgEscaped" -ForegroundColor Cyan
     if ($DenyTools -and $DenyTools.Count -gt 0) {
-        Write-Host "Denied: $denyArg" -ForegroundColor Cyan
+        Write-Host "Denied: $denyArgEscaped" -ForegroundColor Cyan
     }
     Write-Host "Permission mode: $PermissionMode" -ForegroundColor Cyan
     Write-Host "Full command: docker $($cmdArgs -join ' ')" -ForegroundColor DarkGray
