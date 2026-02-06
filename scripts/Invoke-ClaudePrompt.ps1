@@ -168,6 +168,11 @@ if ($EnvVars) {
     }
 }
 
+# Escape inner quotes and wrap value in quotes for safe docker arg passing
+function Escape-Arg([string]$val) {
+    "`"$($val -replace '\\', '\\' -replace '"', '\"')`""
+}
+
 # Build command arguments
 $toolsArg = $AllowedTools -join ','
 # Map permission mode to CLI args
@@ -187,16 +192,13 @@ foreach ($key in $mergedEnvVars.Keys) {
     }
 }
 
-# Escape quotes and wrap tools arg to protect special chars like parentheses
-$toolsArgEscaped = "`"$($toolsArg -replace '"', '\"')`""
-
 $cmdArgs += @(
     $Id
     "claude"
     "-p"
-    $Prompt
+    (Escape-Arg $Prompt)
     "--allowed-tools"
-    $toolsArgEscaped
+    (Escape-Arg $toolsArg)
     "--output-format"
     $OutputFormat
 ) + $permissionArgs
@@ -204,9 +206,8 @@ $cmdArgs += @(
 # Add denied tools if specified
 if ($DenyTools -and $DenyTools.Count -gt 0) {
     $denyArg = $DenyTools -join ','
-    $denyArgEscaped = "`"$($denyArg -replace '"', '\"')`""
     $cmdArgs += "--disallowed-tools"
-    $cmdArgs += $denyArgEscaped
+    $cmdArgs += (Escape-Arg $denyArg)
 }
 
 # Add model if specified
@@ -224,13 +225,13 @@ if ($Agent) {
 # Add system prompt if specified
 if ($SystemPrompt) {
     $cmdArgs += "--system-prompt"
-    $cmdArgs += $SystemPrompt
+    $cmdArgs += (Escape-Arg $SystemPrompt)
 }
 
 # Add append system prompt if specified
 if ($AppendSystemPrompt) {
     $cmdArgs += "--append-system-prompt"
-    $cmdArgs += $AppendSystemPrompt
+    $cmdArgs += (Escape-Arg $AppendSystemPrompt)
 }
 
 # Add budget limit if specified
@@ -246,9 +247,9 @@ if ($Continue) {
 
 # Output debug info when not silent
 if (-not $Silent) {
-    Write-Host "Allowed: $toolsArgEscaped" -ForegroundColor Cyan
+    Write-Host "Allowed: $toolsArg" -ForegroundColor Cyan
     if ($DenyTools -and $DenyTools.Count -gt 0) {
-        Write-Host "Denied: $denyArgEscaped" -ForegroundColor Cyan
+        Write-Host "Denied: $denyArg" -ForegroundColor Cyan
     }
     Write-Host "Permission mode: $PermissionMode" -ForegroundColor Cyan
     Write-Host "Full command: docker $($cmdArgs -join ' ')" -ForegroundColor DarkGray
