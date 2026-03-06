@@ -27,7 +27,8 @@
     "plugins": ["formatter@company-plugins", "deployer@company-plugins"]
   },
   "container": {
-    "idleTimeout": 300
+    "idleTimeout": 300,
+    "updateClaude": false
   },
   "auth": {
     "useBedrock": false,

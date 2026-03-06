@@ -37,6 +37,9 @@
 .PARAMETER AwsProfile
     AWS profile name for Bedrock. Default: default
 
+.PARAMETER UpdateClaude
+    Update Claude Code to the latest version after container starts.
+
 .PARAMETER Silent
     Suppress all informational output. No messages, no container ID output.
 
@@ -81,6 +84,8 @@ param(
 
     [switch]$WatchdogNonStrict,
 
+    [switch]$UpdateClaude,
+
     [switch]$Silent
 )
 
@@ -111,6 +116,9 @@ if (-not $AwsRegion -and $configData -and $configData.auth.awsRegion) {
 }
 if (-not $AwsProfile) {
     $AwsProfile = if ($configData -and $configData.auth.awsProfile) { $configData.auth.awsProfile } else { "default" }
+}
+if (-not $UpdateClaude -and $configData -and $configData.container.updateClaude) {
+    $UpdateClaude = $configData.container.updateClaude
 }
 
 # Validate mount path exists
@@ -212,6 +220,18 @@ if ($waited -ge $maxWait) {
     Write-Error "Container failed to start within $maxWait seconds"
     docker logs $Id
     exit 1
+}
+
+# Update Claude Code if requested
+if ($UpdateClaude) {
+    if (-not $Silent) { Write-Host "Updating Claude Code..." -ForegroundColor Cyan }
+    docker exec $Id powershell -Command "Invoke-RestMethod -Uri 'https://claude.ai/install.ps1' | Invoke-Expression"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Claude Code update failed (exit code $LASTEXITCODE), continuing with existing version"
+    } elseif (-not $Silent) {
+        $version = docker exec $Id claude --version 2>$null
+        Write-Host "Claude Code updated: $version" -ForegroundColor Green
+    }
 }
 
 if (-not $Silent) {
